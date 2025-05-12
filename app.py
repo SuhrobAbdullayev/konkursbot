@@ -36,16 +36,6 @@ async def check_ads_task():
 
 async def on_startup(dispatcher):
     await db.create()
-    # await db.create_table(table_name='users', fields="""
-    #             id SERIAL PRIMARY KEY,
-    #             telegram_id VARCHAR(255) NOT NULL UNIQUE,
-    #             status BOOLEAN NOT NULL DEFAULT TRUE,
-    #             username VARCHAR(255) NULL,
-    #             refferal VARCHAR(255) NULL,
-    #             count INTEGER NOT NULL DEFAULT 0,
-    #             is_join BOOLEAN NOT NULL DEFAULT FALSE,
-    #             created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    #         """)
 
     await db.create_table(table_name='users', fields="""
                 id SERIAL PRIMARY KEY,
@@ -53,7 +43,6 @@ async def on_startup(dispatcher):
                 status BOOLEAN NOT NULL DEFAULT TRUE,
                 username VARCHAR(255) NULL,
                 refferal VARCHAR(255) NULL,
-                refferal2 VARCHAR(255) NULL,
                 count INTEGER NOT NULL DEFAULT 0,
                 is_join BOOLEAN NOT NULL DEFAULT FALSE,
                 created_at TIMESTAMP NOT NULL DEFAULT NOW()
