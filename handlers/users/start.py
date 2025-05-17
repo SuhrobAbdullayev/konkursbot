@@ -323,31 +323,5 @@ async def handle_ads_query(query: types.InlineQuery):
         cache_time=1
     )
 
-@dp.chat_join_request_handler()
-async def handle_join_request(join_request: types.ChatJoinRequest):
-    user_id = join_request.from_user.id
-    chat_id = join_request.chat.id
-
-    user_info = await db.select_info(str(user_id))
-
-    if not user_info or user_info.get("count", 0) < REQUIRED_COUNT:
-        try:
-            # Send a message to the user if they don't meet the criteria
-            await bot.send_message(
-                chat_id=user_id,
-                text=("🔒 Siz bizning shartlarni to'liq bajarmagansiz. Shuning uchun yutuqli testlar o'tkaziladigan yopiq kanalimizga obuna bo'la olmaysiz 😔\n\n🔑 Shartlarni bajarish uchun /start bosing ✅"
-                      ),
-                parse_mode="HTML"
-            )
-        except: pass
-        return
-    await bot.approve_chat_join_request(chat_id=chat_id, user_id=user_id)
-    await bot.send_message(
-        chat_id=user_id,
-        text=(
-            "✅ Siz barcha shartlarni bajardingiz va yopiq kanalimizga muvaffaqiyatli qo'shildingiz!\nEndi yutuqli testlarda qatnashishingiz mumkin 🎉"
-        ),
-        parse_mode="HTML"
-    )
 
 
