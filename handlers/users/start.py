@@ -1,13 +1,20 @@
 from aiogram import types
 
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, \
-    InlineQueryResultPhoto, InlineQueryResultArticle, InputTextMessageContent
+    InlineQueryResultPhoto, ReplyKeyboardMarkup, KeyboardButton
+
+from handlers.users.checkPhone import check_phone_number
+from handlers.users.checkSubscription import is_user_subscribed, check_subscription
 from loader import dp, db, bot
 
-CLOSED_URL = "https://t.me/+eEdKajl3yO44Njli"
 JOIN_PHOTO = "https://t.me/MyUzBots/251"
 PHOTO_URL = "https://t.me/MyUzBots/251"
 REQUIRED_COUNT = 10
+VALID_PREFIXES = {
+    "33", "50", "55", "70", "71", "72", "73", "74", "75",
+    "77", "78", "79", "88", "90", "91", "93", "94", "95", "97", "98", "99"
+}
+
 JOIN_TEXT = f"""🎄 YANGI YIL OLIMPIADASI 🎄
 Ingliz tilidan bilimlaringizni sinab ko'ring va sovrinlarni qo'lga kiriting! 😊
 
@@ -17,6 +24,7 @@ Ingliz tilidan bilimlaringizni sinab ko'ring va sovrinlarni qo'lga kiriting! �
 🥉 3-5-o'rin: 100 000 so'm + sertifikat
 
 👉 Ishtirok etish uchun kanallarimizga obuna bo‘ling va bilimlaringizni sinang! 🏆"""
+
 
 async def start_text(user_id):
     START_TEXT = f"""🎄YANGI YIL OLIMPIADASI! Ingliz tilidan bilimlaringizni sinab ko'ring va pul yutuqlarini qo'lga kiriting.
@@ -34,211 +42,147 @@ async def start_text(user_id):
 
     return START_TEXT
 
-async def is_user_subscribed(user_id: int) -> bool:
-    get_channels = await db.get_channels()
-    # If there are no channels in the database, return True to bypass subscription check
-    if not get_channels:
-        return True
-
-    for channel_id in get_channels:
-        try:
-            user = await bot.get_chat_member(chat_id=channel_id['telegram_id'], user_id=user_id)
-            if not user.is_chat_member():
-                return False
-        except Exception as e:
-            print(f"Error checking subscription for channel {channel_id}: {e}")
-            return False
-    return True
-
-async def check_subscription(message: types.Message):
-    """
-    Check subscription across multiple channels and prompt if not subscribed.
-    """
-    user_id = message.from_user.id
-    get_channels = await db.get_channels()
-
-    # If no channels are configured, proceed without subscription check
-    if not get_channels:
-        return True
-
-    is_subscribed = await is_user_subscribed(user_id)
-    if not is_subscribed:
-        keyboard = InlineKeyboardMarkup(row_width=1)
-        for get_channel in get_channels:
-            channel_button = InlineKeyboardButton(text=get_channel['name'], url=get_channel['invite_link'])
-            keyboard.add(channel_button)
-        check_button = InlineKeyboardButton(text="Done ✅", callback_data="check_subscription")
-        keyboard.add(check_button)
-
-        await message.answer_photo(JOIN_PHOTO, caption=JOIN_TEXT, reply_markup=keyboard, parse_mode="HTML")
-        return False
-    return True
 
 @dp.callback_query_handler(lambda c: c.data == 'check_subscription')
 async def process_callback_check_subscription(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
-    if await is_user_subscribed(user_id):
-        user_info = await db.select_info(str(user_id))
-        refferal_id = user_info['refferal']
-        if not refferal_id:
-            await callback_query.message.reply_photo(PHOTO_URL, await start_text(callback_query.from_user.id),
-                                                     reply_markup=InlineKeyboardMarkup(
-                                                         inline_keyboard=[
-                                                             [
-                                                                 InlineKeyboardButton(
-                                                                     text="🏆 QATNASHISH ✅",
-                                                                     url=f"https://t.me/UzOlimpiada_Bot?start="
-                                                                 )
-                                                             ]
-                                                         ]
-                                                     ),
-                                                     parse_mode="HTML")
-            await callback_query.message.answer(f"👆 Yuqoridagi habarni do'stlaringizga va guruhlarga yuboring.\n\nSizdagi ballar soni: {user_info['count']} ball \n\n- {REQUIRED_COUNT} ball yig'sangiz yutuqli testlar o'tkazib boriladigan yopiq kanalimizga ulanish imkonini qo'lga kiritasiz ✅",
-                                                reply_markup=InlineKeyboardMarkup(
-                                                    inline_keyboard=[
-                                                        [
-                                                            InlineKeyboardButton(
-                                                                text="🔗 Do`stlarga yuborish",
-                                                                switch_inline_query=f"share"
-                                                            )
-                                                        ]
-                                                    ]
-                                                ),
-                                                parse_mode="HTML")
-            await bot.answer_callback_query(callback_query.id, text="✅ Subscription confirmed!")
-            await callback_query.message.delete()
+
+    # 1. Tekshirish: foydalanuvchi barcha kanallarga obuna bo‘lganmi?
+    if not await is_user_subscribed(user_id):
+        await bot.answer_callback_query(
+            callback_query.id,
+            text="❌ Siz barcha kerakli kanallarga obuna bo‘lmagansiz. Iltimos, obuna bo‘ling.",
+            show_alert=True
+        )
+        return
+    await bot.answer_callback_query(callback_query.id, text="✅ Obuna tasdiqlandi!")
+    await callback_query.message.delete()
+
+    user_info = await db.select_info(str(user_id))
+    referral_id = user_info.get('refferal')
+
+    if referral_id:
+        referral_info = await db.select_info(str(referral_id))
+        referral_count = referral_info['count'] + 1
+
+        if referral_count >= REQUIRED_COUNT:
+            await db.add_count(str(referral_id))
+            await db.add_player(str(referral_id))
         else:
-            refferal_info = await db.select_info(str(refferal_id))
-            refferal_count = refferal_info['count'] + 1
-            if int(refferal_count) >= REQUIRED_COUNT:
-                await db.add_count(str(refferal_id))
-                await db.add_player(str(refferal_id))
-                msg = f"⚡️ Siz taklif qilgan do`stingiz {callback_query.from_user.first_name} kanallarimizga ham azo boldi.\n\n🤩 Sizda umumiy {REQUIRED_COUNT} ball boldi va siz bizning yutuqli testlar o'tkaziladigan kanalimizga obuna bo'lishingiz mumkin ✅\n\n<strong>ID raqamingiz:</strong> <code>{refferal_id}</code>\n\n<i>👆 Bu id raqamdan testda ishtirok etish uchun foydalanasiz.</i>\n\n- Ko'proq ma'lumotlar kanalimizda berib boriladi.\n\n- Sizga omad tilaymiz 😊"
-                try:
-                    await bot.send_message(
-                        chat_id=int(refferal_id),
-                        text=msg,  # Ensure `msg` is HTML-formatted and safe
-                        parse_mode="HTML",
-                        reply_markup=InlineKeyboardMarkup(
-                            inline_keyboard=[
-                                [
-                                    InlineKeyboardButton(
-                                        text="🔑 Kanalga qo`shilish",
-                                        url=f"{CLOSED_URL}"  # Ensure CLOSED_URL is a valid URL
-                                    )
-                                ]
-                            ]
-                        )
-                    )
-                except: pass
-            elif int(refferal_count) < REQUIRED_COUNT:
-                await db.add_count(str(refferal_id))
-                await db.ref_done(str(callback_query.from_user.id))
-                msg = f"⚡️ Siz taklif qilgan do`stingiz {callback_query.from_user.first_name} kanallarimizga ham azo boldi va sizga +1 ball berildi. \n Sizda umumiy ballar soni {refferal_count} ta"
-                try:
-                    await bot.send_message(int(refferal_id), msg)
-                except: pass
-            await callback_query.message.reply_photo(PHOTO_URL, await start_text(callback_query.from_user.id),
-                                                     reply_markup=InlineKeyboardMarkup(
-                                                         inline_keyboard=[
-                                                             [
-                                                                 InlineKeyboardButton(
-                                                                     text="🏆 QATNASHISH ✅",
-                                                                     url=f"https://t.me/UzOlimpiada_Bot?start="
-                                                                 )
-                                                             ]
-                                                         ]
-                                                     ),
-                                                     parse_mode="HTML")
-            await callback_query.message.answer(f"👆 Yuqoridagi habarni do'stlaringizga va guruhlarga yuboring.\n\nSizdagi ballar soni: {user_info['count']} ball \n\n- {REQUIRED_COUNT} ball yig'sangiz yutuqli testlar o'tkazib boriladigan yopiq kanalimizga ulanish imkonini qo'lga kiritasiz ✅",
-                                                reply_markup=InlineKeyboardMarkup(
-                                                    inline_keyboard=[
-                                                        [
-                                                            InlineKeyboardButton(
-                                                                text="🔗 Do`stlarga yuborish",
-                                                                switch_inline_query=f"share"
-                                                            )
-                                                        ]
-                                                    ]
-                                                ),
-                                                parse_mode="HTML")
-            await bot.answer_callback_query(callback_query.id, text="✅ Subscription confirmed!")
-            await callback_query.message.delete()
-    else:
-        await bot.answer_callback_query(callback_query.id, text="❌ You are not subscribed to all required channels. Please join them and try again.", show_alert=True)
+            await db.add_count(str(referral_id))
+
+        await db.ref_done(str(user_id))
+
+        try:
+            await bot.send_message(
+                int(referral_id),
+                f"🎉 Siz taklif qilgan do‘stingiz {callback_query.from_user.first_name} kanallarimizga obuna bo‘ldi!\n"
+                f"✅ Sizga +1 ball berildi. Umumiy ballar: {referral_count}"
+            )
+        except:
+            pass
+
+    if not user_info['phone']:
+        keyboard = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        keyboard.add(KeyboardButton("📞 Telefon raqamni yuborish", request_contact=True))
+
+        await callback_query.message.answer(
+            "📱 Telefon raqamingizni yozib yuboring.\n\nMasalan: +998901234567\n\n"
+            "Yoki quyidagi tugmani bosing:",
+            reply_markup=keyboard
+        )
+        await db.mark_phone(user_id)  # belgilab qo‘yasizki: telefon raqam kutilmoqda
+        await bot.answer_callback_query(callback_query.id, text="✅ Obuna tasdiqlandi. Endi raqamingizni yuboring!")
+        return
+
+
+    await callback_query.message.answer_photo(
+        PHOTO_URL,
+        caption=await start_text(user_id),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton("🏆 QATNASHISH ✅", url=f"https://t.me/UzOlimpiada_Bot?start={user_id}")
+        ]]),
+        parse_mode="HTML"
+    )
+    await callback_query.message.answer(
+        f"👆 Yuqoridagi habarni do‘stlaringizga yuboring.\n\n"
+        f"Sizdagi ballar soni: {user_info['count']} ball\n\n"
+        f"- {REQUIRED_COUNT} ball yig‘ganingizda yopiq kanalga kirish imkoniga ega bo‘lasiz ✅",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton("🔗 Do‘stlarga yuborish", switch_inline_query="share")
+        ]]),
+        parse_mode="HTML"
+    )
+
+
 
 @dp.message_handler()
 async def bot_start(message: types.Message):
-    refferal_id = message.get_args()
+    referral_id = message.get_args()
+    user_id = str(message.from_user.id)
+
     user_data = {
-        'telegram_id': str(message.from_user.id),
+        'telegram_id': user_id,
         'status': True,
-        'username': message.from_user.username
+        'username': message.from_user.username,
     }
+
     try:
-        if refferal_id:
-            referred_user = await db.select_info(str(refferal_id))
-
+        if referral_id and referral_id != user_id:
+            referred_user = await db.select_info(str(referral_id))
             if referred_user:
-                if str(refferal_id) != str(message.from_user.id):
-                    user_data['refferal'] = str(refferal_id)
-                    try:
-                        await bot.send_message(
-                            int(refferal_id),
-                            f"Siz do`stingiz {message.from_user.first_name} ni botga taklif qildingiz. Agar u kanallarimizga obuna bo'lsa, sizga 1 ball beriladi."
-                        )
-                    except: pass
-
+                user_data['refferal'] = str(referral_id)
+                try:
+                    await bot.send_message(
+                        int(referral_id),
+                        f"Siz do‘stingiz {message.from_user.first_name} ni botga taklif qildingiz. "
+                        "Agar u kanallarimizga obuna bo‘lsa va telefon raqamini yuborsa, sizga 1 ball beriladi."
+                    )
+                except:
+                    pass
         await db.add(table_name='users', fields=user_data)
-    except: pass
+    except Exception as e:
+        print(f"Error saving user: {e}")
 
-    if await check_subscription(message):
-        refferal_info = await db.select_info(str(message.from_user.id))
-        refferal_count = refferal_info['count']
-        if int(refferal_count) >= REQUIRED_COUNT:
-            msg = f"⚡️Siz bizning shartlarni to'liq bajargansiz. \n- Agar obuna bo'lmagan bo'lsangiz bizning yutuqli testlar o'tkaziladigan kanalimizga obuna bo'lishingiz mumkin ✅\n\n<strong>ID raqamingiz:</strong> <code>{message.from_user.id}</code>\n\n<i>👆 Bu id raqamdan testda ishtirok etish uchun foydalanasiz.</i>\n\n- Ko'proq ma'lumotlar kanalimizda berib boriladi.\n\n- Sizga omad tilaymiz 😊"
-            await message.answer(
-                msg,  # Ensure `msg` contains your HTML-formatted text
-                parse_mode="HTML",
-                reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [
-                            InlineKeyboardButton(
-                                text="🔑 Kanalga qo`shilish",
-                                url=f"{CLOSED_URL}"  # Ensure CLOSED_URL is a valid URL
-                            )
-                        ]
-                    ]
+    if not await check_subscription(message):
+        return
+
+    if not await check_phone_number(message):
+        return
+
+    # 4. If both passed, show welcome & share
+    referral_info = await db.select_info(user_id)
+    referral_count = referral_info['count']
+
+    await message.answer_photo(
+        PHOTO_URL,
+        caption=await start_text(message.from_user.id),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="🏆 QATNASHISH ✅",
+                    url=f"https://t.me/UzOlimpiada_Bot?start={message.from_user.id}"
                 )
-            )
-        elif int(refferal_count) < REQUIRED_COUNT:
-            await message.answer_photo(
-                PHOTO_URL,
-                caption=await start_text(message.from_user.id),
-                reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [
-                            InlineKeyboardButton(
-                                text="🏆 QATNASHISH ✅",
-                                url=f"https://t.me/UzOlimpiada_Bot?start={message.from_user.id}"
-                            )
-                        ]
-                    ]
-                ),
-                parse_mode="HTML"
-            )
-            await message.answer(f"👆 Yuqoridagi habarni do'stlaringizga va guruhlarga yuboring.\n\nSizdagi ballar soni: {refferal_count} ball \n\n- {REQUIRED_COUNT} ball yig'sangiz yutuqli testlar o'tkazib boriladigan yopiq kanalimizga ulanish imkonini qo'lga kiritasiz ✅",
-                                 reply_markup=InlineKeyboardMarkup(
-                                     inline_keyboard=[
-                                         [
-                                             InlineKeyboardButton(
-                                                 text="🔗 Do`stlarga yuborish",
-                                                 switch_inline_query=f"share"
-                                             )
-                                         ]
-                                     ]
-                                 ),
-                                 parse_mode="HTML")
+            ]]
+        ),
+        parse_mode="HTML"
+    )
+
+    await message.answer(
+        f"👆 Yuqoridagi habarni do'stlaringizga va guruhlarga yuboring.\n\n"
+        f"📊 Sizdagi ballar soni: {referral_count} ball\n\n"
+        f"🎯 {REQUIRED_COUNT} ball yig'sangiz yutuqli testlar o'tkaziladigan yopiq kanalga ulanish imkonini olasiz ✅",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="🔗 Do‘stlarga yuborish",
+                    switch_inline_query="share"
+                )
+            ]]
+        ),
+        parse_mode="HTML"
+    )
+
 
 
 @dp.inline_handler(state="*")

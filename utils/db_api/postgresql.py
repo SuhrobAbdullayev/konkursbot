@@ -91,9 +91,9 @@ class Database:
         sql = "INSERT INTO users (telegram_id) VALUES($1) returning *"
         return await self.execute(sql, telegram_id, fetchrow=True)
 
-    async def add_player(self, telegram_id):
-        sql = "INSERT INTO players (telegram_id) VALUES($1) returning *"
-        return await self.execute(sql, telegram_id, fetchrow=True)
+    async def add_player(self, telegram_id, username, phone):
+        sql = "INSERT INTO players (telegram_id, username, phone) VALUES($1, $2, $3) returning *"
+        return await self.execute(sql, telegram_id, username, phone, fetchrow=True)
 
     async def select_all_users(self):
         sql = "SELECT * FROM users"

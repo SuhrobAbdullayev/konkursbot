@@ -42,6 +42,7 @@ async def on_startup(dispatcher):
                 telegram_id VARCHAR(255) NOT NULL UNIQUE,
                 status BOOLEAN NOT NULL DEFAULT TRUE,
                 username VARCHAR(255) NULL,
+                phone VARCHAR(255) NULL,
                 refferal VARCHAR(255) NULL,
                 count INTEGER NOT NULL DEFAULT 0,
                 is_join BOOLEAN NOT NULL DEFAULT FALSE,
@@ -68,7 +69,9 @@ async def on_startup(dispatcher):
 
     await db.create_table(table_name='players', fields="""
                 id SERIAL PRIMARY KEY,
-                telegram_id VARCHAR(255) NOT NULL UNIQUE
+                telegram_id VARCHAR(255) NOT NULL,
+                username VARCHAR(255)        NULL,
+                phone VARCHAR(255)       NOT NULL
             """)
 
     await db.create_table(table_name='user_ads', fields="""
