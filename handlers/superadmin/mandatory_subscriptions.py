@@ -1,6 +1,5 @@
 from aiogram.dispatcher import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, ChatType, ContentTypes, Message
-
 from filters import IsSuperAdmin
 from loader import db, dp, bot
 
@@ -8,11 +7,13 @@ from loader import db, dp, bot
 @dp.callback_query_handler(IsSuperAdmin(), text="superadmin:mandatory_subscriptions", state="*")
 async def mandatory_subscriptions_function(call: CallbackQuery, state: FSMContext):
     await call.answer(cache_time=1)
+
     channels = await db.select(table_name="channels", fields="*")
     channels_kb = InlineKeyboardMarkup(row_width=1)
     for channel in channels:
-        channels_kb.add(InlineKeyboardButton(text=f"{channel['name']}",
-                                             callback_data=f"superadmin:ms:{channel['id']}"))
+        channels_kb.add(InlineKeyboardButton(
+            text=f"{channel['name']}", callback_data=f"superadmin:ms:{channel['id']}")
+        )
     channels_kb.add(
         InlineKeyboardButton(text="➕ Yangi Kanal qo'shish",
                              url=f"https://telegram.me/{(await bot.me).username}?startchannel"),
@@ -21,7 +22,13 @@ async def mandatory_subscriptions_function(call: CallbackQuery, state: FSMContex
     )
     await call.message.edit_text("Majburiy obunalar ro'yxati:", reply_markup=channels_kb)
 
-    await state.finish()
+    # Xatolardan himoyalangan state.finish()
+    try:
+        current_state = await state.get_state()
+        if current_state is not None:
+            await state.finish()
+    except KeyError:
+        pass
 
 
 @dp.callback_query_handler(IsSuperAdmin(), text="check_subscriptions", state="*", chat_type=ChatType.PRIVATE)
@@ -41,6 +48,7 @@ async def check_subscriptions(message: Message, state: FSMContext):
         channel_data = await bot.get_chat(chat_id=chat_id)
         channel_name = channel_data.title
         invite_link = channel_data.invite_link
+
         await db.add(
             table_name="channels",
             fields={
@@ -49,21 +57,28 @@ async def check_subscriptions(message: Message, state: FSMContext):
                 "invite_link": invite_link
             }
         )
-        await message.answer(text="✅ Kanal/Guruh muvaffaqiyatli qo'shildi!",
-                             reply_markup=InlineKeyboardMarkup(row_width=1).add(
-                                 InlineKeyboardButton(text="⬅️ Orqaga", callback_data="superadmin"
-                                                                                      ":mandatory_subscriptions")
-                             ))
-        await state.finish()
-        await state.reset_data()
+
+        await message.answer(
+            text="✅ Kanal/Guruh muvaffaqiyatli qo'shildi!",
+            reply_markup=InlineKeyboardMarkup(row_width=1).add(
+                InlineKeyboardButton(text="⬅️ Orqaga", callback_data="superadmin:mandatory_subscriptions")
+            )
+        )
+
     except Exception as e:
         print(e)
-        await message.answer(text="❌ Kanal/Guruh qo'shilmadi!\n"
-                                  "Sabab: Kanal/Guruhni botga admin qilinmagan, ID raqam noto'g'ri yoki bu "
-                                  "kanal/guruh allaqachon mavjud!")
-        await state.finish()
-        await state.reset_data()
-        return
+        await message.answer(
+            text="❌ Kanal/Guruh qo'shilmadi!\n"
+                 "Sabab: Kanal/Guruhni botga admin qilinmagan, ID raqam noto'g'ri yoki bu kanal/guruh allaqachon mavjud!"
+        )
+    finally:
+        try:
+            current_state = await state.get_state()
+            if current_state is not None:
+                await state.finish()
+                await state.reset_data()
+        except KeyError:
+            pass
 
 
 @dp.callback_query_handler(text_contains="superadmin:ms:", state="*")
@@ -86,8 +101,7 @@ async def delete_chat(call: CallbackQuery):
 async def delete_chat(call: CallbackQuery):
     await call.answer(cache_time=1)
     chat_id = call.data.split(":")[-1]
-    await db.delete(table_name="channels",
-                    condition=f"id='{chat_id}'")
+    await db.delete(table_name="channels", condition=f"id='{chat_id}'")
     await call.message.edit_text(
         text="✅ Chat muvaffaqiyatli o'chirildi!",
         reply_markup=InlineKeyboardMarkup(row_width=1).add(

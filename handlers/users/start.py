@@ -65,13 +65,8 @@ async def process_callback_check_subscription(callback_query: types.CallbackQuer
         referral_info = await db.select_info(str(referral_id))
         referral_count = referral_info['count'] + 1
 
-        if referral_count >= REQUIRED_COUNT:
-            await db.add_count(str(referral_id))
-            await db.add_player(str(referral_id))
-        else:
-            await db.add_count(str(referral_id))
-
-        await db.ref_done(str(user_id))
+        await db.add_count(str(referral_id))
+        await db.add_player(str(referral_id), referral_info['username'], referral_info['phone'])
 
         try:
             await bot.send_message(

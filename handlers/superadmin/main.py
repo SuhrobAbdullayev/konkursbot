@@ -16,4 +16,10 @@ async def user_bot_start(message: types.Message):
 async def cancel_handler(call: types.CallbackQuery, state: FSMContext):
     await call.answer(cache_time=1)
     await call.message.edit_text("Bekor qilindi!", reply_markup=menu_super_admin)
-    await state.finish()
+
+    try:
+        current_state = await state.get_state()
+        if current_state is not None:
+            await state.finish()
+    except KeyError:
+        pass
